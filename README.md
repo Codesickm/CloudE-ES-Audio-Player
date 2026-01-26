@@ -25,7 +25,8 @@ A premium **Apple Music inspired** web-based audio player with smooth UI/UX, lyr
 > UI / UX previews (design assets)
 
 ![CloudE UI Preview 1](assets/WithMusic.png)
-![CloudE UI Preview 2](assets/WithMusic.mp4)
+![CloudE UI Preview 2](https://github.com/user-attachments/assets/303277d8-08d7-49af-997c-3fc8b8ee5fbe)
+
 
 ---
 
