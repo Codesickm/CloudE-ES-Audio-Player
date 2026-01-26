@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Cloude Music</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div class="bg-layer" id="bg1"></div>
+  <div class="bg-layer" id="bg2"></div>
+  
+  <div class="window-controls">
+    <div class="win-btn" title="Fullscreen" onclick="document.body.requestFullscreen()">
+      <svg viewBox="0 0 24 24">
+        <path
+          d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3zM9 21l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6zM21 15l-2.3 2.3-2.87-2.89-1.42 1.42L17.3 18.7 15 21h6z" />
+      </svg>
+    </div>
+    <div class="win-btn" title="Close" onclick="window.close?.()">
+      <svg viewBox="0 0 24 24">
+        <path
+          d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+      </svg>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept="audio/*" multiple
+    style="position:absolute; inset:0; opacity:0; cursor:default; z-index:-1;" />
+
+  <div class="app">
+    <div class="center paused" id="nowPlaying">
+      <div class="header">
+        <div class="pill"><b>Library:</b> <span id="libCount">0</span> tracks</div>
+        <div class="actions">
+          <button class="chipbtn" id="btnLibrary">Library</button>
+          <button class="chipbtn ghost" id="btnLyrics">Lyrics</button>
+          <button class="chipbtn ghost" id="btnFX">FX</button>
+          <button class="chipbtn ghost" id="btnMenu">•••</button>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="art-wrap">
+          <div class="art" id="art1"></div>
+          <div class="art" id="art2"></div>
+        </div>
+      </div>
+
+      <div class="info">
+        <div class="title" id="trackTitle">Cloud Player</div>
+        <div class="artist" id="trackArtist">Click Library → Add songs</div>
+        <div class="badge-row" id="badgeRow"></div>
+      </div>
+
+      <div class="progress">
+        <div class="bar" id="progressBar">
+          <div class="preview" id="previewTime">0:00</div>
+          <div class="fill" id="progressFill"></div>
+        </div>
+        <div class="times">
+          <span id="currTime">0:00</span>
+          <span id="remTime">-0:00</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn small" id="shuffleBtn" title="Shuffle">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
+          </svg>
+        </button>
+
+        <button class="btn skip" id="prevBtn">
+          <svg viewBox="0 0 24 24">
+            <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
+          </svg>
+        </button>
+
+        <button class="btn play" id="playBtn">
+          <svg id="playIcon" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          <svg id="pauseIcon" viewBox="0 0 24 24" style="display:none">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+          </svg>
+        </button>
+
+        <button class="btn skip" id="nextBtn">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
+          </svg>
+        </button>
+
+        <button class="btn small" id="repeatBtn" title="Repeat">
+          <svg viewBox="0 0 24 24">
+            <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="row-mini">
+        <div class="left">
+          <button class="btn small" id="favBtn" title="Favorite">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+            </svg>
+          </button>
+          <button class="chipbtn ghost" id="btnQueue">Up Next</button>
+        </div>
+
+        <div class="right vol">
+          <button class="btn small" id="muteBtn" title="Mute">
+            <svg viewBox="0 0 24 24">
+              <path d="M7 9v6h4l5 5V4L11 9H7z" />
+            </svg>
+          </button>
+          <input type="range" id="volSlider" min="0" max="1" step="0.01" value="1" />
+        </div>
+      </div>
+    </div>
+
+    <div class="view" id="libraryView">
+      <div class="view-header">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="chipbtn" id="btnBack">← Back</button>
+          <div class="view-title">Library</div>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="chipbtn ghost" id="btnAddSongs2">+ Add</button>
+          <div class="tabs">
+            <div class="tab active" id="tabSongs">Songs</div>
+            <div class="tab" id="tabAlbums">Albums</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="search"><input id="libSearch" placeholder="Search songs / albums..." /></div>
+      <div style="height:10px"></div>
+
+      <div id="songsList" class="list"></div>
+      <div id="albumsGrid" class="grid" style="display:none;"></div>
+    </div>
+
+    <div class="view" id="albumView">
+      <div class="view-header">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="chipbtn" id="btnAlbumBack">← Albums</button>
+          <div class="view-title" id="albumTitle">Album</div>
+        </div>
+        <button class="chipbtn ghost" id="btnPlayAlbum">Play</button>
+      </div>
+      <div id="albumSongs" class="list"></div>
+    </div>
+
+    <div class="mini" id="miniPlayer">
+      <div class="mini-top" id="miniOpen">
+        <div class="mini-left">
+          <div class="mini-art" id="miniArt"></div>
+          <div class="mini-meta">
+            <b id="miniTitle">Nothing Playing</b>
+            <small id="miniArtist">—</small>
+          </div>
+        </div>
+        <div class="mini-controls">
+          <button class="btn small" id="miniPlayBtn" title="Play/Pause">
+            <svg id="miniPlayIcon" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            <svg id="miniPauseIcon" viewBox="0 0 24 24" style="display:none">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            </svg>
+          </button>
+          <button class="btn small" id="miniNextBtn" title="Next">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="mini-progress">
+        <div class="fill" id="miniProgressFill"></div>
+      </div>
+    </div>
+
+    <!-- Lyrics Panel -->
+    <div class="panel panel-right lyrics-minimal" id="lyricsPanel">
+      <div class="panel-head">
+        <b>Lyrics</b>
+        <button class="chipbtn" id="btnCloseLyrics">Close</button>
+      </div>
+
+      <div class="panel-body" id="lyricsBody" style="padding: 18px;">
+        <div class="lyrics-toprow">
+          <div class="lyrics-status" id="lyricsStatus">Ready</div>
+          <div style="display:flex; gap:10px;">
+            <button class="chipbtn" id="btnFetchLyrics">Fetch Online</button>
+            <button class="chipbtn ghost" id="btnClearLyrics">Clear</button>
+          </div>
+        </div>
+
+        <div id="lyricsSticker" class="lyrics-sticker">
+          <div id="lyricsLines" class="lyrics-lines">
+            <div class="lyrics-empty">No lyrics loaded.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CloudE FX Panel -->
+    <!-- CloudE FX Panel (Premium UI) -->
+<div class="panel fx-panel" id="fxPanel">
+  <div class="panel-head fx-head">
+    <div class="fx-title">
+      <div class="fx-logo">CE</div>
+      <div>
+        <b>CloudE Environment Sound™</b>
+        <div class="fx-sub">Spatial imaging + environment tuning</div>
+        <div class="fx-active" id="fxActiveLabel">Active: Studio</div>
+      </div>
+    </div>
+    <button class="chipbtn fx-close" id="btnCloseFX">Close</button>
+  </div>
+
+  <div class="panel-body fx-body">
+    <!-- Main Switch -->
+    <div class="fx-card fx-card-top">
+      <div class="fx-row">
+        <div class="fx-left">
+          <div class="fx-row-title">CloudE Engine</div>
+          <div class="fx-row-desc">Immersive tuning & surround feel</div>
+        </div>
+
+        <label class="ce-toggle">
+          <input type="checkbox" id="swEnvOn" />
+          <span class="ce-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Presets -->
+    <div class="fx-card">
+      <div class="fx-row">
+        <div class="fx-left">
+          <div class="fx-row-title">Environment</div>
+          <div class="fx-row-desc">Choose your sound scene</div>
+        </div>
+
+        <!-- keep select hidden but functional -->
+        <select id="envPreset" class="fx-hidden-select">
+          <option value="studio">Studio</option>
+          <option value="cinema">Cinema</option>
+          <option value="concert">Concert</option>
+          <option value="car">Car</option>
+          <option value="night">Night</option>
+        </select>
+      </div>
+
+      <div class="fx-pills" id="envPills">
+        <button class="fx-pill" data-env="studio">Studio</button>
+        <button class="fx-pill" data-env="cinema">Cinema</button>
+        <button class="fx-pill" data-env="concert">Concert</button>
+        <button class="fx-pill" data-env="car">Car</button>
+        <button class="fx-pill" data-env="night">Night</button>
+      </div>
+    </div>
+
+    <!-- Strength -->
+    <div class="fx-card">
+      <div class="fx-row">
+        <div class="fx-left">
+          <div class="fx-row-title">Strength</div>
+          <div class="fx-row-desc">How strong the environment feels</div>
+        </div>
+        <div class="fx-value" id="envStrengthValue">65%</div>
+      </div>
+
+      <div class="fx-slider">
+        <input type="range" id="envStrength" min="0" max="100" step="1" value="65" />
+      </div>
+    </div>
+
+    <!-- Instrument Separation -->
+    <div class="fx-card">
+      <div class="fx-row">
+        <div class="fx-left">
+          <div class="fx-row-title">Instrument Separation</div>
+          <div class="fx-row-desc">Extra width + clean imaging</div>
+        </div>
+
+        <label class="ce-toggle">
+          <input type="checkbox" id="swSeparation" checked />
+          <span class="ce-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Bass -->
+    <div class="fx-card">
+      <div class="fx-row">
+        <div class="fx-left">
+          <div class="fx-row-title">Bass</div>
+          <div class="fx-row-desc">Low-end energy (dB)</div>
+        </div>
+        <div class="fx-value" id="envBassValue">+3 dB</div>
+      </div>
+
+      <div class="fx-slider">
+        <input type="range" id="envBass" min="-12" max="12" step="1" value="3" />
+      </div>
+    </div>
+
+    <!-- Clarity -->
+    <div class="fx-card">
+      <div class="fx-row">
+        <div class="fx-left">
+          <div class="fx-row-title">Clarity</div>
+          <div class="fx-row-desc">Vocal presence + detail (dB)</div>
+        </div>
+        <div class="fx-value" id="envClarityValue">+2 dB</div>
+      </div>
+
+      <div class="fx-slider">
+        <input type="range" id="envClarity" min="-12" max="12" step="1" value="2" />
+      </div>
+    </div>
+
+    <!-- Hint -->
+    <div class="fx-hint">
+      Best on headphones 🎧. CloudE Engine uses spatial imaging + environment tuning.
+    </div>
+  </div>
+</div>
+
+    <!-- Settings Panel -->
+<div class="panel settings-panel" id="menuPanel">
+  <div class="panel-head settings-head">
+    <b>Settings</b>
+    <button class="chipbtn" id="btnCloseMenu">Close</button>
+  </div>
+
+  <div class="panel-body settings-body">
+
+    <!-- Quick Actions -->
+    <div class="set-card">
+      <div class="set-title">Quick Actions</div>
+      <div class="set-actions">
+        <button class="chipbtn" id="btnAddSongs">Add Songs</button>
+        <button class="chipbtn ghost" id="btnDownload">Download Current</button>
+        <button class="chipbtn ghost" id="btnShare">Copy Track Info</button>
+      </div>
+    </div>
+
+    <!-- Playback -->
+    <div class="set-card">
+      <div class="set-title">Playback</div>
+
+      <div class="set-row">
+        <div class="set-left">
+          <div class="set-name">Smart Play</div>
+          <div class="set-desc">Auto build queue from library</div>
+        </div>
+        <label class="ce-toggle">
+          <input type="checkbox" id="swSmart" checked />
+          <span class="ce-track"></span>
+        </label>
+      </div>
+
+      <div class="set-row">
+        <div class="set-left">
+          <div class="set-name">Gapless</div>
+          <div class="set-desc">No silence between tracks</div>
+        </div>
+        <label class="ce-toggle">
+          <input type="checkbox" id="swGapless" />
+          <span class="ce-track"></span>
+        </label>
+      </div>
+
+      <div class="set-row">
+        <div class="set-left">
+          <div class="set-name">Crossfade</div>
+          <div class="set-desc">Smooth transition between songs</div>
+        </div>
+        <label class="ce-toggle">
+          <input type="checkbox" id="swCrossfade" checked />
+          <span class="ce-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Extra cool settings -->
+    <div class="set-card">
+      <div class="set-title">Experience</div>
+
+      <div class="set-row">
+        <div class="set-left">
+          <div class="set-name">Reduce Motion</div>
+          <div class="set-desc">Smoother for low-end phones</div>
+        </div>
+        <label class="ce-toggle">
+          <input type="checkbox" id="swReduceMotion" />
+          <span class="ce-track"></span>
+        </label>
+      </div>
+
+      <div class="set-row">
+        <div class="set-left">
+          <div class="set-name">Auto Lyrics Fetch</div>
+          <div class="set-desc">Always try LRCLIB synced lyrics</div>
+        </div>
+        <label class="ce-toggle">
+          <input type="checkbox" id="swAutoLyrics" checked />
+          <span class="ce-track"></span>
+        </label>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+    <!-- Queue Panel -->
+    <div class="panel" id="queuePanel">
+      <div class="panel-head">
+        <b>Up Next</b>
+        <button class="chipbtn" id="btnCloseQueue">Close</button>
+      </div>
+      <div class="panel-body">
+        <div class="search"><input id="queueSearch" placeholder="Search in queue..." /></div>
+        <div style="height:12px"></div>
+        <div class="list" id="queueList"></div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="playerA" crossorigin="anonymous"></audio>
+  <audio id="playerB" crossorigin="anonymous"></audio>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
