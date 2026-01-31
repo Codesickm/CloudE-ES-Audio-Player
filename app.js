@@ -50,6 +50,156 @@ let autoLyrics = localStorage.getItem("cloude_auto_lyrics") !== "0";
 
 
 
+/* ===========================
+   CloudE Player Debug + Shuffle/Repeat Patch (Apple Style)
+   =========================== */
+
+const DEBUG_PLAYER = true;
+
+function log(...args) {
+  if (!DEBUG_PLAYER) return;
+  console.log("%c[PLAYER]", "color:#00bcd4;font-weight:bold", ...args);
+}
+function warn(...args) {
+  if (!DEBUG_PLAYER) return;
+  console.warn("%c[PLAYER]", "color:#ff9800;font-weight:bold", ...args);
+}
+function err(...args) {
+  if (!DEBUG_PLAYER) return;
+  console.error("%c[PLAYER]", "color:#f44336;font-weight:bold", ...args);
+}
+
+
+function stateSnapshot(reason = "") {
+  try {
+    const p = getActive?.() || null; // ✅ moved here
+    log("STATE SNAPSHOT:", reason, {
+      queueLen: queue?.length || 0,
+      queueIndex,
+      isShuffle,
+      repeatMode,
+      crossfadeMode,
+      currentTrack: queue?.[queueIndex]?.title || "(none)",
+      activePlayerId,
+      currentTime: p?.currentTime,
+      duration: p?.duration
+    });
+  } catch (e) {
+    warn("snapshot failed", e);
+  }
+}
+
+
+/* Apple style shuffle state */
+let shuffleOrder = [];
+let shufflePos = 0;
+let shuffleHistory = [];
+
+/* Prevent double transition */
+let transitionLock = false;
+
+function resetShuffleCycle() {
+  if (!queue || queue.length === 0) {
+    shuffleOrder = [];
+    shufflePos = 0;
+    shuffleHistory = [];
+    log("Shuffle reset: queue empty");
+    return;
+  }
+
+  const indices = queue.map((_, i) => i);
+  // Shuffle indices
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+
+  // Ensure current track stays first (Apple style feel)
+  const current = queueIndex;
+  const filtered = indices.filter(i => i !== current);
+  shuffleOrder = [current, ...filtered];
+  shufflePos = 0;
+  shuffleHistory = [current];
+
+  log("✅ Shuffle cycle created", { shuffleOrder, shufflePos });
+}
+
+function ensureShuffleReady() {
+  if (!shuffleOrder.length || shuffleOrder[shufflePos] !== queueIndex) {
+    resetShuffleCycle();
+  }
+}
+
+function goToIndex(newIndex, reason = "unknown") {
+  if (!queue || queue.length === 0) return;
+  if (newIndex < 0 || newIndex >= queue.length) return;
+
+  log(`➡️ goToIndex ${queueIndex} -> ${newIndex}`, { reason });
+
+  queueIndex = newIndex;
+  stateSnapshot("Before playTrack");
+  playTrack(queue[queueIndex]);
+}
+
+function getNextIndex() {
+  if (!queue || queue.length === 0) return 0;
+
+  // Repeat One handled elsewhere in ended handler
+  if (isShuffle) {
+    ensureShuffleReady();
+
+    // move shuffle pointer
+    if (shufflePos < shuffleOrder.length - 1) {
+      shufflePos++;
+      const idx = shuffleOrder[shufflePos];
+      shuffleHistory.push(idx);
+      return idx;
+    } else {
+      // end of shuffle cycle
+      if (repeatMode === 1) {
+        log("🔁 Shuffle cycle ended => repeat all => new shuffle cycle");
+        resetShuffleCycle();
+        shufflePos = 1; // next after current
+        const idx = shuffleOrder[shufflePos];
+        shuffleHistory.push(idx);
+        return idx;
+      } else {
+        log("⛔ Shuffle cycle ended and repeatMode=OFF => stop");
+        return null;
+      }
+    }
+  }
+
+  // Normal mode
+  if (queueIndex < queue.length - 1) return queueIndex + 1;
+
+  // End reached
+  if (repeatMode === 1) return 0; // repeat all
+  return null;
+}
+
+function getPrevIndex() {
+  if (!queue || queue.length === 0) return 0;
+
+  if (isShuffle) {
+    ensureShuffleReady();
+    if (shuffleHistory.length > 1) {
+      shuffleHistory.pop(); // remove current
+      const prevIdx = shuffleHistory[shuffleHistory.length - 1];
+      shufflePos = shuffleOrder.indexOf(prevIdx);
+      log("⬅️ Shuffle prev from history", { prevIdx, shuffleHistory, shufflePos });
+      return prevIdx;
+    }
+    log("⬅️ Shuffle prev: no history => stay current");
+    return queueIndex;
+  }
+
+  return Math.max(0, queueIndex - 1);
+}
+
+
+
+
 // ----- AudioContext -----
 let audioCtx = null;
 function ensureAudioContext() {
@@ -850,15 +1000,56 @@ function clearLyricsForCurrent() {
 // ----- Player engine -----
 function setupPlayer(p) {
   p.onended = () => {
-    if (repeatMode === 2) { p.currentTime = 0; p.play(); return; }
-    if (!transitionTriggeredForCurrent) nextSong();
+    log("🎵 ended", { activePlayerId, pId: p.id, repeatMode });
+
+    // Repeat One
+    if (repeatMode === 2) {
+      log("🔂 Repeat One: restart same");
+      p.currentTime = 0;
+      p.play().catch(e => warn("play failed", e));
+      return;
+    }
+
+    // If crossfade already triggered, ignore ended
+    if (transitionTriggeredForCurrent || isTransitioning) {
+      warn("ended ignored due to transition flags", {
+        transitionTriggeredForCurrent,
+        isTransitioning
+      });
+      return;
+    }
+
+    nextSong("ended");
   };
+
   p.ontimeupdate = () => {
     if (p.id !== activePlayerId) return;
     updateProgress(p);
     updateLyricHighlight(p.currentTime);
     if (!p.paused && !isTransitioning && !transitionTriggeredForCurrent && queue.length > 1) {
-      if (crossfadeMode && p.duration - p.currentTime <= CROSSFADE_TIME) nextSong();
+      if (repeatMode === 2) {
+        // repeat same song, no nextSong
+        repeatOneCrossfade("repeat-one-loop");
+        return;
+      }
+
+      if (!crossfadeMode) return;
+      if (!p.duration || isNaN(p.duration)) return;
+
+      const remaining = p.duration - p.currentTime;
+
+      if (remaining <= CROSSFADE_TIME) {
+        if (repeatMode === 2) {
+          // ✅ repeat one crossfade loop
+          repeatOneCrossfade("timeupdate");
+          return;
+        }
+
+        // ✅ normal crossfade next track
+        nextSong("crossfade");
+      }
+
+
       else if (!crossfadeMode && gaplessMode && p.duration - p.currentTime <= 0.25) nextSong();
     }
   };
@@ -1083,31 +1274,152 @@ async function togglePlay() {
   }
 }
 
-function nextSong() {
-  if (queue.length === 0) return;
-  if (repeatMode === 0 && queueIndex === queue.length - 1) {
-    const p = getActive(); p.pause(); setPlayState(false); return;
+function nextSong(trigger = "manual") {
+  if (!queue || queue.length === 0) {
+    warn("nextSong called but queue empty");
+    return;
   }
-  queueIndex = isShuffle ? Math.floor(Math.random() * queue.length) : (queueIndex + 1) % queue.length;
+
+  if (transitionLock || isTransitioning) {
+    warn("nextSong ignored due to lock/transition", { trigger, transitionLock, isTransitioning });
+    return;
+  }
+
+  log("⏭️ nextSong()", { trigger });
+
+  const nextIdx = getNextIndex();
+
+  if (nextIdx === null) {
+    log("✅ No next track (repeat off). Pausing.");
+    const p = getActive();
+    p.pause();
+    setPlayState(false);
+    return;
+  }
+
+  // lock to avoid double fire
+  transitionLock = true;
+  setTimeout(() => (transitionLock = false), 450);
+
+  queueIndex = nextIdx;
   renderQueue();
   loadFromQueue(queueIndex, true);
 }
-function prevSong() {
-  if (queue.length === 0) return;
-  queueIndex = Math.max(0, queueIndex - 1);
+
+function prevSong(trigger = "manual") {
+  if (!queue || queue.length === 0) {
+    warn("prevSong called but queue empty");
+    return;
+  }
+
+  const p = getActive();
+  log("⏮️ prevSong()", { trigger, currentTime: p.currentTime });
+
+  // Apple Music style: if played more than 3 sec -> restart track
+  if (p.currentTime > 3) {
+    log("⏮️ Restarting current track");
+    p.currentTime = 0;
+    return;
+  }
+
+  const prevIdx = getPrevIndex();
+  queueIndex = prevIdx;
+
   renderQueue();
   loadFromQueue(queueIndex, true);
 }
+
+
 function toggleShuffle() {
   isShuffle = !isShuffle;
+
+  // UI
   shuffleBtn.classList.toggle("active", isShuffle);
   shuffleBtn.style.opacity = isShuffle ? "1" : ".72";
+
+  // ✅ Apple shuffle logic
+  if (isShuffle) {
+    resetShuffleCycle(); // builds shuffleOrder + history
+  } else {
+    shuffleOrder = [];
+    shufflePos = 0;
+    shuffleHistory = [];
+  }
+
+  log("🔀 toggleShuffle()", { isShuffle, shuffleOrder, shufflePos, shuffleHistory });
+  stateSnapshot("toggleShuffle");
 }
+
 function toggleRepeat() {
   repeatMode = (repeatMode + 1) % 3;
+
+  // UI active/inactive
   repeatBtn.classList.toggle("active", repeatMode !== 0);
+
+  // ✅ Mode specific classes
+  repeatBtn.classList.toggle("repeat-all", repeatMode === 1);
+  repeatBtn.classList.toggle("repeat-one", repeatMode === 2);
+
+  // optional opacity
   repeatBtn.style.opacity = repeatMode !== 0 ? "1" : ".72";
+
+  log("🔁 Repeat mode changed", {
+    repeatMode,
+    meaning: repeatMode === 0 ? "OFF" : repeatMode === 1 ? "REPEAT ALL" : "REPEAT ONE"
+  });
+
+  stateSnapshot("toggleRepeat");
 }
+
+function repeatOneCrossfade(trigger = "repeat-one-crossfade") {
+  if (isTransitioning || transitionLock) {
+    warn("repeatOneCrossfade ignored (locked)", { isTransitioning, transitionLock });
+    return;
+  }
+
+  const from = getActive();
+  const to = getInactive();
+
+  const t = getCurrentTrack(); // ✅ correct track object
+  if (!t) {
+    warn("repeatOneCrossfade: no current track");
+    return;
+  }
+
+  log("🔂🌫️ repeatOneCrossfade()", { trigger, title: t.title });
+
+  isTransitioning = true;
+  transitionLock = true;
+
+  // ✅ load SAME song again
+  to.src = t.objectUrl;     // ✅ correct
+  to.currentTime = 0;
+
+  try {
+    // start silent
+    const gTo = getPlayerGain(to);
+    gTo.gain.cancelScheduledValues(0);
+    gTo.gain.value = 0.0001;
+  } catch {}
+
+  to.load();
+
+  to.play().then(() => {
+    crossfade(from, to, () => {
+      swapPlayers(from, to);
+      isTransitioning = false;
+      transitionLock = false;
+      transitionTriggeredForCurrent = true;
+      log("✅ repeatOneCrossfade completed");
+    });
+  }).catch(e => {
+    err("repeatOneCrossfade play failed", e);
+    isTransitioning = false;
+    transitionLock = false;
+  });
+}
+
+
 function toggleFavCurrent() {
   const t = getCurrentTrack(); if (!t) return;
   if (favorites.has(t.id)) favorites.delete(t.id);
@@ -1160,27 +1472,27 @@ document.getElementById("btnLyrics").onclick = async () => {
       // TURN OFF: Fade out lyrics, Fade in Art
       stage.classList.remove("lyrics-active");
       btn.classList.remove("active-btn");
-      
+
       // Move panel back to body after transition (300ms)
       setTimeout(() => {
-        if(!stage.classList.contains("lyrics-active")) {
-           app.appendChild(lyricsPanel);
-           lyricsPanel.classList.remove("open");
+        if (!stage.classList.contains("lyrics-active")) {
+          app.appendChild(lyricsPanel);
+          lyricsPanel.classList.remove("open");
         }
       }, 300);
 
     } else {
       // TURN ON: Move Lyrics INTO stage
       stage.appendChild(lyricsPanel);
-      
+
       // Force layout recalc
-      void lyricsPanel.offsetWidth; 
-      
+      void lyricsPanel.offsetWidth;
+
       lyricsPanel.classList.add("open"); // Ensure it's visible block
       stage.classList.add("lyrics-active"); // Trigger CSS Fade/Scale
       btn.classList.add("active-btn");
     }
-  } 
+  }
   // DESKTOP LOGIC: Standard Sidebar
   else {
     lyricsPanel.classList.add("lyrics-minimal");
@@ -1431,20 +1743,20 @@ envPresetEl.onchange = () => {
 const btnShuffle = document.getElementById("shuffleBtn");
 const btnRepeat = document.getElementById("repeatBtn");
 
-if(btnShuffle) btnShuffle.onclick = (e) => {
-    e.stopPropagation(); 
-    toggleShuffle(); 
-    // Visual update immediately
-    btnShuffle.classList.toggle("active", isShuffle);
-    btnShuffle.style.opacity = isShuffle ? "1" : ".72";
+if (btnShuffle) btnShuffle.onclick = (e) => {
+  e.stopPropagation();
+  toggleShuffle();
+  // Visual update immediately
+  btnShuffle.classList.toggle("active", isShuffle);
+  btnShuffle.style.opacity = isShuffle ? "1" : ".72";
 };
 
-if(btnRepeat) btnRepeat.onclick = (e) => {
-    e.stopPropagation();
-    toggleRepeat();
-    // Visual update
-    btnRepeat.classList.toggle("active", repeatMode !== 0);
-    btnRepeat.style.opacity = repeatMode !== 0 ? "1" : ".72";
+if (btnRepeat) btnRepeat.onclick = (e) => {
+  e.stopPropagation();
+  toggleRepeat();
+  // Visual update
+  btnRepeat.classList.toggle("active", repeatMode !== 0);
+  btnRepeat.style.opacity = repeatMode !== 0 ? "1" : ".72";
 };
 
 bg1.style.backgroundImage = `url(${DEFAULT_ART})`;
